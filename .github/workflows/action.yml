@@ -1,0 +1,130 @@
+name: Action
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  local:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # fwci finds .firmwareci at the root of the repository it runs in.
+      - name: Make the fixture a repository
+        run: |
+          cp -r test/fixture "$RUNNER_TEMP/fixture"
+          git -C "$RUNNER_TEMP/fixture" init -q
+
+      # Every test of the workflow, on whichever of its DUTs is free.
+      - id: all
+        uses: ./
+        continue-on-error: true
+        with:
+          workflow: smoke
+          local: true
+          binaries: Binary=.firmwareci/duts/mock/dut.yaml
+          working_directory: ${{ runner.temp }}/fixture
+          version: ${{ vars.FWCI_VERSION || 'latest' }}
+
+      - name: Check what the run left
+        env:
+          OUTCOME: ${{ steps.all.outcome }}
+          FIXTURE: ${{ runner.temp }}/fixture
+        run: |
+          set -x
+          test "$OUTCOME" = failure
+          grep -q 'tests="3" failures="1"' "$FIXTURE/report.xml"
+          grep -q 'name="Check / Fail"' "$FIXTURE/report.xml"
+          grep -q 'failing on purpose' "$FIXTURE/fwci.log"
+
+      # One test by name, on a named DUT.
+      - uses: ./
+        with:
+          workflow: smoke
+          tests: pass
+          local: true
+          dut: mock
+          binaries: Binary=.firmwareci/duts/mock/dut.yaml
+          working_directory: ${{ runner.temp }}/fixture
+          artifact: ""
+          version: installed
+
+  install:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - id: bad
+        uses: ./
+        continue-on-error: true
+        with:
+          workflow: smoke
+          local: true
+          version: 0.0.0
+
+      - name: A version that doesn't exist fails the step
+        env:
+          OUTCOME: ${{ steps.bad.outcome }}
+        run: test "$OUTCOME" = failure
+
+  refused:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # Both fail before fwci runs, so no fwci is needed.
+      - id: typo
+        uses: ./
+        continue-on-error: true
+        with:
+          workflow: smoke
+          local: "maybe"
+          artifact: ""
+          version: installed
+
+      - id: both
+        uses: ./
+        continue-on-error: true
+        with:
+          workflow: smoke
+          local: true
+          synced: false
+          artifact: ""
+          version: installed
+
+      - name: Both failed
+        env:
+          TYPO: ${{ steps.typo.outcome }}
+          BOTH: ${{ steps.both.outcome }}
+        run: test "$TYPO/$BOTH" = failure/failure
+
+  job-request:
+    runs-on: ubuntu-latest
+    # Needs a token for the dev API, and a project there that the dev GitHub App reports to.
+    env:
+      TOKEN: ${{ secrets.FWCI_DEV_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+        if: env.TOKEN != ''
+
+      - uses: ./
+        if: env.TOKEN != ''
+        with:
+          token: ${{ env.TOKEN }}
+          api: https://api.firmware-ci.dev
+          workflow: devtest
+          project_link: BlindspotSoftware/fwci-devtest
+          branch: main
+          tests: quick
+          follow: true
+          artifact: fwci-job-request
+          version: ${{ vars.FWCI_VERSION || 'latest' }}

@@ -1,0 +1,290 @@
+name: FirmwareCI
+description: >-
+  Test firmware with FirmwareCI: run a workflow's tests on FirmwareCI, or with local: true on this
+  runner, next to the board, through fwci run.
+branding:
+  icon: cpu
+  color: blue
+
+inputs:
+  # What runs
+  workflow:
+    description: The workflow to run, by name.
+    required: true
+  tests:
+    description: Names of the workflow's tests to run, separated by commas or newlines. Without it, all of them run.
+    required: false
+  binaries:
+    description: >-
+      Binaries as name=file, or name=URL on FirmwareCI, separated by ; or newlines, such as
+      Binary=build/coreboot.rom for [[input.Binary]].
+    required: false
+
+  # Where
+  local:
+    description: >-
+      true runs the tests on this runner instead of FirmwareCI, from this checkout's .firmwareci; that
+      needs Docker, and a runner that reaches the DUT.
+    required: false
+    default: "false"
+  synced:
+    description: >-
+      On FirmwareCI, run the tests as FirmwareCI synced them from the branch, and have it report them on
+      the commit. false sends this checkout's tests instead, as a one-shot run that isn't reported on a
+      commit.
+    required: false
+    default: "true"
+
+  # On FirmwareCI
+  token:
+    description: A FirmwareCI organization or user API token. Or use email and password.
+    required: false
+  email:
+    description: Email to log in with, instead of token.
+    required: false
+  password:
+    description: Password to log in with, instead of token.
+    required: false
+  organization:
+    description: >-
+      The organization to submit to (a ULID also works). Only needed when the credential can reach
+      more than one. An organization token names its own.
+    required: false
+  follow:
+    description: >-
+      Wait for the jobs to end. The step then fails on a failed test, and the tests show in this job's
+      check and summary, with fwci.log and report.xml kept. It holds the runner while the jobs queue.
+      Without it, the step ends once the request is sent, and the FirmwareCI app reports the results on
+      the commit; with synced: false nothing does, and they show only on FirmwareCI.
+    required: false
+    default: "false"
+  priority:
+    description: >-
+      Queue priority: low, mid or high. A job of higher priority gets a device before every queued job
+      of lower priority. Unset, FirmwareCI queues the run at mid, or at high with synced: false.
+    required: false
+  branch:
+    description: The branch to find the workflow on. Defaults to the branch the run is on.
+    required: false
+  project_link:
+    description: >-
+      The repository holding the FirmwareCI config, when it isn't this one: org/repo on GitHub, else
+      host/org/repo or a URL, such as gitlab.com/org/repo. Needs synced (the default).
+    required: false
+  commit_hash:
+    description: >-
+      The commit to report on. Defaults to the PR head, or the commit the run is on. Needs synced (the
+      default).
+    required: false
+  action:
+    description: A label for the run, such as nightly or release. Needs synced (the default).
+    required: false
+  github_installation_id:
+    description: >-
+      The FirmwareCI GitHub App's installation, when project_link is in another GitHub organization.
+      Needs synced (the default).
+    required: false
+  api:
+    description: The FirmwareCI API.
+    required: false
+    default: https://api.firmware-ci.com
+
+  # On this runner
+  dut:
+    description: >-
+      The DUT to run on, by its directory under .firmwareci/duts or its name. Without it, the first
+      free DUT with the workflow's label.
+    required: false
+  wait:
+    description: >-
+      Wait while someone else holds the DUTs: true until one is free, or at most a time such as 30m.
+      Without it, held DUTs fail the step with exit code 10.
+    required: false
+  storage:
+    description: Storage as name=directory, separated by ; or newlines.
+    required: false
+  ssh_keys:
+    description: SSH keys as name=private key file, separated by ; or newlines.
+    required: false
+
+  # Both
+  args:
+    description: More arguments for fwci run, such as --verbose.
+    required: false
+  working_directory:
+    description: >-
+      Where fwci runs, and binaries are relative to. With local: true or synced: false, inside the
+      repository whose .firmwareci holds the workflow.
+    required: false
+    default: .
+  artifact:
+    description: >-
+      The artifact that keeps fwci.log and report.xml, also when a test fails, with local: true or
+      follow. In a public repository anyone can download it.
+      The default names one for each job and matrix leg; set it when the action runs twice in one job.
+      Empty keeps none.
+    required: false
+    default: fwci-${{ github.job }}-${{ strategy.job-index }}
+  version:
+    description: >-
+      The fwci to install, 0.21.0 or newer, or latest. installed uses the fwci on the PATH, as on a
+      self-hosted runner that has it.
+    required: false
+    default: latest
+
+runs:
+  using: composite
+  steps:
+    - name: Install fwci
+      if: inputs.version != 'installed'
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        VERSION=${VERSION#v}
+
+        if [ "$RUNNER_OS/$RUNNER_ARCH" != Linux/X64 ]; then
+          echo "::error::The action installs fwci on Linux x64 runners, not on $RUNNER_OS $RUNNER_ARCH. Elsewhere, install fwci and set version: installed."
+          exit 1
+        fi
+
+        dir="$RUNNER_TEMP/fwci"
+        name="fwci-$VERSION.linux-amd64"
+        url="https://fwci-cli.s3.eu-central-1.amazonaws.com/$VERSION/$name.tar.gz"
+        mkdir -p "$dir"
+
+        if ! curl -fsSL --retry 3 -o "$dir/$name.tar.gz" "$url" || ! sum=$(curl -fsSL --retry 3 "$url.sha256"); then
+          echo "::error::Couldn't get fwci $VERSION. Is $VERSION a released version?"
+          exit 1
+        fi
+
+        echo "$sum  $dir/$name.tar.gz" | sha256sum -c --quiet -
+        tar -xzf "$dir/$name.tar.gz" -C "$dir" "$name"
+        mv "$dir/$name" "$dir/fwci"
+        echo "$dir" >> "$GITHUB_PATH"
+        "$dir/fwci" version
+
+    - name: Run the tests
+      shell: bash
+      working-directory: ${{ inputs.working_directory }}
+      env:
+        # fwci logs in with these for this step only, and saves no login on the runner.
+        FWCI_TOKEN: ${{ inputs.token }}
+        FWCI_EMAIL: ${{ inputs.email }}
+        FWCI_PASSWORD: ${{ inputs.password }}
+        FWCI_ORG: ${{ inputs.organization }}
+        FWCI_API: ${{ inputs.api }}
+        WORKFLOW: ${{ inputs.workflow }}
+        TESTS: ${{ inputs.tests }}
+        BINARIES: ${{ inputs.binaries }}
+        LOCAL: ${{ inputs.local }}
+        SYNCED: ${{ inputs.synced }}
+        FOLLOW: ${{ inputs.follow }}
+        PRIORITY: ${{ inputs.priority }}
+        BRANCH: ${{ inputs.branch }}
+        PROJECT_LINK: ${{ inputs.project_link }}
+        COMMIT: ${{ inputs.commit_hash }}
+        LABEL: ${{ inputs.action }}
+        INSTALLATION: ${{ inputs.github_installation_id }}
+        DUT: ${{ inputs.dut }}
+        WAIT: ${{ inputs.wait }}
+        STORAGE: ${{ inputs.storage }}
+        SSH_KEYS: ${{ inputs.ssh_keys }}
+        ARGS: ${{ inputs.args }}
+      run: |
+        set -euo pipefail
+
+        if [ -z "$WORKFLOW" ]; then
+          echo "::error::Set workflow, the workflow whose tests run."
+          exit 1
+        fi
+
+        # A switch is true or false, so that a typo doesn't quietly run the tests somewhere else. An
+        # empty one, such as from a matrix leg without it, is its default.
+        : "${LOCAL:=false}" "${SYNCED:=true}" "${FOLLOW:=false}"
+        for name in LOCAL SYNCED FOLLOW; do
+          value=${!name,,}
+          if [ "$value" != true ] && [ "$value" != false ]; then
+            echo "::error::${name,,} is \"${!name}\": set it to true or false."
+            exit 1
+          fi
+          printf -v "$name" %s "$value"
+        done
+
+        if [ "$LOCAL" = true ] && [ "$SYNCED" = false ]; then
+          echo "::error::synced: false sends this checkout's tests to FirmwareCI, and local: true runs them here: drop one."
+          exit 1
+        fi
+
+        args=(run -w "$WORKFLOW")
+
+        # option adds flag and value when the value isn't empty.
+        option() {
+          if [ -n "$2" ]; then
+            args+=("$1" "$2")
+          fi
+        }
+
+        # each adds flag before each entry of list, which separates them by the characters in sep or
+        # newlines. read trims the spaces around each.
+        each() {
+          local entry
+          while read -r entry; do
+            option "$1" "$entry"
+          done <<< "${2//[$3]/$'\n'}"
+        }
+
+        each -t "$TESTS" ,
+        each --storage "$STORAGE" ";"
+        each --ssh-key "$SSH_KEYS" ";"
+        option --dut "$DUT"
+        option --priority "$PRIORITY"
+        option -b "$BRANCH"
+        option --project-link "$PROJECT_LINK"
+        option --commit "$COMMIT"
+        option --action "$LABEL"
+        option --github-installation "$INSTALLATION"
+
+        case "$WAIT" in
+          "" | false) ;;
+          true) args+=(--wait) ;;
+          *) args+=("--wait=$WAIT") ;;
+        esac
+
+        # A run on this runner always uses the checkout and waits for its tests. fwci refuses what the
+        # chosen side doesn't read.
+        if [ "$LOCAL" = false ]; then
+          if [ "$SYNCED" = true ]; then
+            args+=(--synced)
+          else
+            args+=(--remote)
+          fi
+
+          if [ "$FOLLOW" = true ]; then
+            args+=(--follow)
+          else
+            args+=(--no-follow)
+          fi
+        fi
+
+        read -ra extra <<< "${ARGS//$'\n'/ }"
+        args+=("${extra[@]}")
+
+        while read -r binary; do
+          if [ -n "$binary" ]; then
+            args+=("$binary")
+          fi
+        done <<< "${BINARIES//;/$'\n'}"
+
+        fwci "${args[@]}"
+
+    - name: Keep the log and JUnit report
+      if: always() && inputs.artifact != '' && (inputs.local == 'true' || inputs.follow == 'true')
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ inputs.artifact }}
+        path: |
+          ${{ inputs.working_directory }}/fwci.log
+          ${{ inputs.working_directory }}/report.xml
+        if-no-files-found: ignore

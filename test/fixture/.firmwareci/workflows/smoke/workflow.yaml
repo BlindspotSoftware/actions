@@ -1,0 +1,3 @@
+name: smoke
+description: "What the action's own test runs."
+runs-on: action-test

@@ -1,0 +1,18 @@
+name: pass
+description: "Passes, in two stages."
+stages:
+  - name: Prepare
+    steps:
+      - cmd: sleep
+        name: Settle
+        parameters:
+          duration: 1s
+  - name: Check
+    steps:
+      - cmd: cmd
+        name: Read the binary
+        transport:
+          proto: local
+        parameters:
+          executable: sh
+          args: ["-c", "echo 'binary: [[input.Binary]]'"]

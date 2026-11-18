@@ -1,0 +1,36 @@
+name: CI
+on:
+  push:
+    branches:
+      - master
+  # Picks up an fwci release within a day, or at once by hand.
+  schedule:
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Log in to Docker Hub
+        env:
+          USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
+          TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: printf '%s' "$TOKEN" | docker login -u "$USERNAME" --password-stdin
+
+      - name: Build and push the image as v8 and as the fwci version it holds
+        env:
+          IMAGE: ${{ vars.DOCKERHUB_USERNAME }}/action
+        run: |
+          set -euo pipefail
+          docker build -t "$IMAGE:v8" .
+          version=$(docker run --rm "$IMAGE:v8" fwci version | awk '{print $NF}')
+          docker tag "$IMAGE:v8" "$IMAGE:$version"
+          docker push "$IMAGE:v8"
+          docker push "$IMAGE:$version"

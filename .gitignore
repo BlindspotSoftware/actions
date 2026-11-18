@@ -1,0 +1,9 @@
+.env
+.idea
+.vscode
+*.swp
+.DS_Store
+
+# What a local fwci run leaves
+fwci.log
+report.xml

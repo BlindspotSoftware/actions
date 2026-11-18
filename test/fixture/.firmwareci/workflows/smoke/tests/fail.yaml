@@ -1,0 +1,12 @@
+name: fail
+description: "Fails on purpose, so the action's test sees a failed step reported."
+stages:
+  - name: Check
+    steps:
+      - cmd: cmd
+        name: Fail
+        transport:
+          proto: local
+        parameters:
+          executable: sh
+          args: ["-c", "echo failing on purpose; exit 1"]

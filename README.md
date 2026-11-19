@@ -1,9 +1,9 @@
 # FirmwareCI Action
 
-Test firmware with [FirmwareCI](https://firmware-ci.com) from GitHub Actions. The action runs a workflow's tests
-on FirmwareCI, on a board in its lab, or with `local: true` on the runner itself, next to your board. Both go
-through `fwci run`, which the action installs, and take the same inputs. GitLab CI gets the same through a
-[template](#gitlab-ci).
+Test firmware with [FirmwareCI](https://firmware-ci.com) from GitHub Actions or
+[Forgejo Actions](#forgejo-actions). The action runs a workflow's tests on FirmwareCI, on a board in its lab, or
+with `local: true` on the runner itself, next to your board. Both go through `fwci run`, which the action
+installs, and take the same inputs. GitLab CI gets the same through a [template](#gitlab-ci).
 
 ```yaml
 - uses: actions/checkout@v7
@@ -130,6 +130,36 @@ path in the job as on the host, as fwci hands paths in it to the host's Docker. 
   [runners.docker]
     network_mode = "host"
     volumes = ["/var/run/docker.sock:/var/run/docker.sock", "/var/cache/fwci:/var/cache/fwci"]
+```
+
+## Forgejo Actions
+
+Forgejo looks up a `uses:` name in its own mirror of actions, so name this one by its URL:
+
+```yaml
+- uses: actions/checkout@v4
+- run: make build
+- uses: https://github.com/BlindspotSoftware/actions@v8
+  with:
+    workflow: crystal-core
+    binaries: Binary=build/coreboot.rom
+    token: ${{ secrets.FWCI_TOKEN }}
+```
+
+Add the token as the secret `FWCI_TOKEN` under the repository's Settings, Actions, Secrets. To link the repository
+to FirmwareCI, see [Forgejo Integration](https://docs.firmware-ci.com/usage/2_repository_setup/2_integration_forgejo/).
+
+The action keeps no artifact on Forgejo, as `actions/upload-artifact` v4 and newer refuse any server but
+GitHub's. To keep `fwci.log` and `report.xml`, add Forgejo's fork after the action:
+
+```yaml
+- uses: https://code.forgejo.org/forgejo/upload-artifact@v5
+  if: always()
+  with:
+    name: fwci
+    path: |
+      fwci.log
+      report.xml
 ```
 
 ## v7 and Older

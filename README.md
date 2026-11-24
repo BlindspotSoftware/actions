@@ -56,8 +56,11 @@ board with the runner's Docker. Run such a job only on `push`, or require approv
 contributors. Artifacts of a public repository are public too, so `fwci.log` holds nothing a stranger shouldn't
 read.
 
-The step's exit code says how it went: 0 every test passed, 1 a test failed, 6 a test couldn't start, 10 every
-DUT is held by someone else or its agent can't be reached, which may be a wrong `Agent` in its `dut.yaml`.
+The step's exit code says how it went: 0 every test passed, 7 a test failed, 1 a test didn't finish, such as a
+job aborted on FirmwareCI, or another error, 6 a test couldn't start, 10 every DUT is held by someone else or its
+agent can't be reached, which may be a wrong `Agent` in its `dut.yaml`. With `follow: true` and
+`args: --follow=2h` the step waits for the jobs at most that long and then exits 8, with the tests still running
+skipped in `report.xml`.
 `wait` waits only for held DUTs.
 
 ## Inputs

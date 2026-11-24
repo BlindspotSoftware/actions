@@ -1,0 +1,48 @@
+#!/bin/sh
+# fwci-ci runs fwci run with the FWCI_* variables of templates/fwci.gitlab-ci.yml, in GitLab CI and
+# Jenkins. fwci's exit code is the step's.
+set -f
+
+# An empty switch is its default.
+: "${FWCI_LOCAL:=false}" "${FWCI_SYNCED:=true}" "${FWCI_FOLLOW:=false}"
+for name in FWCI_LOCAL FWCI_SYNCED FWCI_FOLLOW; do
+  eval "value=\$$name"
+  case $(printf %s "$value" | tr A-Z a-z) in
+    true | 1 | yes) eval "$name=true" ;;
+    false | 0 | no) eval "$name=false" ;;
+    *)
+      case $name/$value in
+        FWCI_FOLLOW/[0-9]*) ;; # the most to wait, such as 2h, which fwci checks
+        FWCI_FOLLOW/*) echo "FWCI_FOLLOW is \"$value\": set it to true, false or a time such as 2h." >&2; exit 1 ;;
+        *) echo "$name is \"$value\": set it to true or false." >&2; exit 1 ;;
+      esac
+      ;;
+  esac
+done
+
+if [ "$FWCI_LOCAL" = true ] && [ "$FWCI_SYNCED" = false ]; then
+  echo "FWCI_SYNCED false sends this checkout's tests to FirmwareCI, and FWCI_LOCAL true runs them here: drop one." >&2
+  exit 1
+fi
+
+# trim sets e to $1 without the spaces around it.
+trim() { e=${1#"${1%%[![:space:]]*}"}; e=${e%"${e##*[![:space:]]}"}; }
+
+set -- run -w "$FWCI_WORKFLOW"
+IFS=',
+'
+for e in $FWCI_TESTS; do trim "$e"; [ -z "$e" ] || set -- "$@" -t "$e"; done
+unset IFS
+
+# Also on FirmwareCI, so that fwci refuses it instead of running on any DUT.
+[ -z "$FWCI_DUT" ] || set -- "$@" --dut "$FWCI_DUT"
+if [ "$FWCI_LOCAL" = false ]; then
+  if [ "$FWCI_SYNCED" = true ]; then set -- "$@" --synced; else set -- "$@" --remote; fi
+  set -- "$@" --follow="$FWCI_FOLLOW"
+fi
+
+set -- "$@" $FWCI_ARGS
+IFS=';
+'
+for e in $FWCI_BINARIES; do trim "$e"; [ -z "$e" ] || set -- "$@" "$e"; done
+exec fwci "$@"

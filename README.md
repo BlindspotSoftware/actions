@@ -3,7 +3,8 @@
 Test firmware with [FirmwareCI](https://firmware-ci.com) from GitHub Actions or
 [Forgejo Actions](#forgejo-actions). The action runs a workflow's tests on FirmwareCI, on a board in its lab, or
 with `local: true` on the runner itself, next to your board. Both go through `fwci run`, which the action
-installs, and take the same inputs. GitLab CI gets the same through a [template](#gitlab-ci).
+installs, and take the same inputs. GitLab CI gets the same through a [template](#gitlab-ci), and
+[Jenkins](#jenkins) through the template's image.
 
 ```yaml
 - uses: actions/checkout@v7
@@ -118,7 +119,9 @@ firmware-test:
 ```
 
 `FWCI_TESTS`, `FWCI_BINARIES`, `FWCI_LOCAL`, `FWCI_SYNCED`, `FWCI_DUT` and `FWCI_FOLLOW` work as the inputs
-above, and `FWCI_ARGS` takes more `fwci run` flags, such as `--priority low`. Set `FWCI_TOKEN` as a masked CI/CD
+above, and `FWCI_ARGS` takes more `fwci run` flags, such as `--priority low`. `FWCI_FOLLOW` also takes a time
+such as `2h`, the most the job waits before it exits 8. The image's `fwci-ci` turns the variables into
+`fwci run`, and fwci's exit code is the job's. Set `FWCI_TOKEN` as a masked CI/CD
 variable, and `FWCI_ORG` when the token reaches more than one organization. `FWCI_GITLAB_TOKEN` is needed only
 if the project's GitLab integration has no token: a project access token with `api` scope, for FirmwareCI to
 report back. When the job waits for the tests, GitLab shows `report.xml` in the merge request.
@@ -134,6 +137,54 @@ path in the job as on the host, as fwci hands paths in it to the host's Docker. 
     network_mode = "host"
     volumes = ["/var/run/docker.sock:/var/run/docker.sock", "/var/cache/fwci:/var/cache/fwci"]
 ```
+
+## Jenkins
+
+A Pipeline runs the same image as a Docker agent and sets the same variables as the GitLab template. Its
+`sh 'fwci-ci'` step runs `fwci run`. Jenkins needs the Docker Pipeline plugin, and the agent Docker. Add
+the token as a Secret text credential with the ID `fwci-token`:
+
+```groovy
+pipeline {
+    agent { docker { image 'firmwareci/action:v8' } }
+    environment {
+        FWCI_TOKEN    = credentials('fwci-token')
+        FWCI_WORKFLOW = 'QEMU-Q35'
+        FWCI_BINARIES = 'Binary=build/coreboot.rom'
+        FWCI_FOLLOW   = 'true'
+    }
+    stages {
+        stage('FirmwareCI') {
+            steps { sh 'fwci-ci' }
+            post { always { junit 'report.xml' } }
+        }
+    }
+}
+```
+
+With `FWCI_FOLLOW` true the build waits for the tests, and `junit` shows `report.xml`. A failed test exits 7
+and fails the build. The report shows either way, as `junit` runs in `post { always }`. `FWCI_FOLLOW` set to
+`2h` waits at most two hours, then exits 8 with the tests still running skipped in `report.xml`. To mark the
+build unstable on a failed test, check the exit code:
+
+```groovy
+steps {
+    script {
+        def code = sh(returnStatus: true, script: 'fwci-ci')
+        if (code == 7) { unstable('A test failed') } else if (code != 0) { error("fwci-ci exited ${code}") }
+    }
+}
+```
+
+Without `FWCI_FOLLOW` the build ends once the request is sent. In a build the Gerrit Trigger plugin started,
+fwci sends the change, so Gerrit's checks find the jobs. Any other build sends the repository, commit and
+branch it checked out, and FirmwareCI reports on that commit of the repository that triggered the build,
+on GitHub, GitLab or Forgejo, once that repository is linked in FirmwareCI, which needs no `.firmwareci` of
+its own. When the FirmwareCI config lives in another repository, set `FWCI_ARGS` to
+`--project-link org/repo`: that repository only supplies the workflow.
+
+A freestyle job, or an agent without Docker, installs fwci and runs `fwci run` itself, see the
+[FirmwareCI docs](https://docs.firmware-ci.com).
 
 ## Forgejo Actions
 
@@ -190,9 +241,11 @@ GitLab CI, extend `.fwci` instead of running `/bin/action` in the v7.0 image.
 
 ## Development
 
-`action.yml` is a composite action, `Dockerfile` the fwci image for GitLab, which `docker.yml` publishes daily
-as `firmwareci/action:v8` and under the fwci version it holds. The `Action` workflow runs the action locally
-against `test/fixture`, a mock DUT, and on the FirmwareCI dev API with the `FWCI_DEV_TOKEN` secret.
+`action.yml` is a composite action, `Dockerfile` the image with fwci and `fwci-ci` for GitLab CI and
+Jenkins, which `docker.yml` publishes daily as `firmwareci/action:v8` and under the fwci version it holds. The
+`Action` workflow runs the action locally against `test/fixture`, a mock DUT, and on the FirmwareCI dev API
+with the `FWCI_DEV_TOKEN` secret. It also runs `test/fwci-ci.sh` in the image, which checks the `fwci run`
+arguments `fwci-ci` builds.
 
 ## License
 

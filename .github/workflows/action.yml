@@ -107,6 +107,17 @@ jobs:
           BOTH: ${{ steps.both.outcome }}
         run: test "$TYPO/$BOTH" = failure/failure
 
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build the image GitLab CI and Jenkins run
+        run: docker build -t fwci-action .
+
+      - name: fwci-ci builds the fwci run arguments
+        run: docker run --rm -v "$PWD/test:/test:ro" fwci-action sh /test/fwci-ci.sh
+
   job-request:
     runs-on: ubuntu-latest
     # Needs a token for the dev API, and a project there that the dev GitHub App reports to.

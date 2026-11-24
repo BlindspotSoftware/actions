@@ -17,9 +17,9 @@
 # commit, queued at mid; with FWCI_SYNCED false they show only on FirmwareCI, queued at high. With
 # FWCI_FOLLOW, or FWCI_LOCAL true, the job waits for the tests and fails on a failed one, and GitLab
 # shows report.xml in the merge request. Without either, fwci writes neither fwci.log nor report.xml,
-# and GitLab's warning that it found no files to upload is expected. A run on the runner needs Docker
-# there: a shell executor with fwci installed, or a docker executor set up as in the README's GitLab
-# CI section.
+# and GitLab's warning that it found no files to upload is expected. The image's fwci-ci turns the
+# variables into fwci run. A run on the runner needs Docker there: a shell executor with fwci and this
+# repository's fwci-ci on the PATH, or a docker executor set up as in the README's GitLab CI section.
 .fwci:
   image: firmwareci/action:v8
   variables:
@@ -29,49 +29,10 @@
     FWCI_LOCAL: "false" # true runs the tests on this runner, next to the board, instead of FirmwareCI
     FWCI_SYNCED: "true" # on FirmwareCI, the tests as synced, reported on the commit; false sends the checkout's
     FWCI_DUT: "" # with FWCI_LOCAL true, the DUT; else the first free one with the workflow's label
-    FWCI_FOLLOW: "false" # on FirmwareCI, wait for the tests
+    FWCI_FOLLOW: "false" # on FirmwareCI, wait for the tests; a time such as 2h waits at most that long
     FWCI_ARGS: "" # more fwci run arguments, such as --priority low, --wait=30m or --storage OS=images
   script:
-    - |
-      set -f
-
-      # An empty switch is its default.
-      : "${FWCI_LOCAL:=false}" "${FWCI_SYNCED:=true}" "${FWCI_FOLLOW:=false}"
-      for name in FWCI_LOCAL FWCI_SYNCED FWCI_FOLLOW; do
-        eval "value=\$$name"
-        case $(printf %s "$value" | tr A-Z a-z) in
-          true | 1 | yes) eval "$name=true" ;;
-          false | 0 | no) eval "$name=false" ;;
-          *) echo "$name is \"$value\": set it to true or false." >&2; exit 1 ;;
-        esac
-      done
-
-      if [ "$FWCI_LOCAL" = true ] && [ "$FWCI_SYNCED" = false ]; then
-        echo "FWCI_SYNCED false sends this checkout's tests to FirmwareCI, and FWCI_LOCAL true runs them here: drop one." >&2
-        exit 1
-      fi
-
-      # trim sets e to $1 without the spaces around it.
-      trim() { e=${1#"${1%%[![:space:]]*}"}; e=${e%"${e##*[![:space:]]}"}; }
-
-      set -- run -w "$FWCI_WORKFLOW"
-      IFS=',
-      '
-      for e in $FWCI_TESTS; do trim "$e"; [ -z "$e" ] || set -- "$@" -t "$e"; done
-      unset IFS
-
-      # Also on FirmwareCI, so that fwci refuses it instead of running on any DUT.
-      [ -z "$FWCI_DUT" ] || set -- "$@" --dut "$FWCI_DUT"
-      if [ "$FWCI_LOCAL" = false ]; then
-        if [ "$FWCI_SYNCED" = true ]; then set -- "$@" --synced; else set -- "$@" --remote; fi
-        set -- "$@" --follow="$FWCI_FOLLOW"
-      fi
-
-      set -- "$@" $FWCI_ARGS
-      IFS=';
-      '
-      for e in $FWCI_BINARIES; do trim "$e"; [ -z "$e" ] || set -- "$@" "$e"; done
-      fwci "$@"
+    - fwci-ci
   artifacts:
     when: always
     paths: [fwci.log]

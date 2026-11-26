@@ -104,8 +104,8 @@ settings**. `email` and `password` work too. A run on this runner needs none.
 ## GitLab CI
 
 [`templates/fwci.gitlab-ci.yml`](templates/fwci.gitlab-ci.yml) has a job to extend, with the same switches as
-variables. It runs the `firmwareci/action:v8` image, which follows the newest fwci within a day;
-`firmwareci/action:0.21.0` and so on keep one:
+variables. It runs the `firmwareci/action:v8` image, which follows the newest fwci within a day; a tag named
+after an fwci version keeps that one:
 
 ```yaml
 include:
@@ -126,17 +126,19 @@ variable, and `FWCI_ORG` when the token reaches more than one organization. `FWC
 if the project's GitLab integration has no token: a project access token with `api` scope, for FirmwareCI to
 report back. When the job waits for the tests, GitLab shows `report.xml` in the merge request.
 
-A run on the runner with a docker executor needs the host's network and Docker socket, and a cache directory at the same
-path in the job as on the host, as fwci hands paths in it to the host's Docker. In the runner's `config.toml`:
+A run on the runner with a docker executor needs the host's Docker socket in the job. In the runner's
+`config.toml`:
 
 ```toml
 [[runners]]
   executor = "docker"
-  environment = ["XDG_CACHE_HOME=/var/cache/fwci"]
   [runners.docker]
-    network_mode = "host"
-    volumes = ["/var/run/docker.sock:/var/run/docker.sock", "/var/cache/fwci:/var/cache/fwci"]
+    volumes = ["/var/run/docker.sock:/var/run/docker.sock"]
+    devices = ["/dev/kvm"] # only on a host with KVM: QEMU runs on it instead of emulating the CPU
 ```
+
+The socket hands every job on that runner the host's Docker, which is root on the host, so let only trusted
+projects use it.
 
 ## Jenkins
 
@@ -183,6 +185,25 @@ on GitHub, GitLab or Forgejo, once that repository is linked in FirmwareCI, whic
 its own. When the FirmwareCI config lives in another repository, set `FWCI_ARGS` to
 `--project-link org/repo`: that repository only supplies the workflow.
 
+With `FWCI_LOCAL` true the tests run in the agent, which then needs the host's Docker: its socket, the
+socket's group (`getent group docker` on the agent), and a cache fwci can write, as Jenkins runs the container
+as its own user with `HOME` at `/`. On an agent with KVM, `--device /dev/kvm` lets QEMU use it:
+
+```groovy
+agent {
+    docker {
+        image 'firmwareci/action:v8'
+        args '-v /var/run/docker.sock:/var/run/docker.sock --group-add <docker gid>'
+    }
+}
+environment {
+    FWCI_LOCAL     = 'true'
+    XDG_CACHE_HOME = "${WORKSPACE}@tmp"
+    FWCI_WORKFLOW  = 'QEMU-Q35'
+    FWCI_BINARIES  = 'Binary=build/coreboot.rom'
+}
+```
+
 A freestyle job, or an agent without Docker, installs fwci and runs `fwci run` itself, see the
 [FirmwareCI docs](https://docs.firmware-ci.com).
 
@@ -202,6 +223,18 @@ Forgejo looks up a `uses:` name in its own mirror of actions, so name this one b
 
 Add the token as the secret `FWCI_TOKEN` under the repository's Settings, Actions, Secrets. To link the repository
 to FirmwareCI, see [Forgejo Integration](https://docs.firmware-ci.com/usage/2_repository_setup/2_integration_forgejo/).
+
+With `local: true` the job needs Docker. A runner label with the `host` executor has it. A job container gets the
+host's Docker socket only when the runner's `config.yml` says so:
+
+```yaml
+container:
+  docker_host: automount
+  options: --device=/dev/kvm # only on a host with KVM: QEMU runs on it instead of emulating the CPU
+```
+
+The socket hands every job on that runner the host's Docker, which is root on the host, so let only trusted
+repositories use it.
 
 The action keeps no artifact on Forgejo, as `actions/upload-artifact` v4 and newer refuse any server but
 GitHub's. To keep `fwci.log` and `report.xml`, add Forgejo's fork after the action:

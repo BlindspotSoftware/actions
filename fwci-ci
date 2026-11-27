@@ -32,6 +32,9 @@ set -- run -w "$FWCI_WORKFLOW"
 IFS=',
 '
 for e in $FWCI_TESTS; do trim "$e"; [ -z "$e" ] || set -- "$@" -t "$e"; done
+IFS=';
+'
+for e in $FWCI_METADATA; do trim "$e"; [ -z "$e" ] || set -- "$@" --metadata "$e"; done
 unset IFS
 
 # Also on FirmwareCI, so that fwci refuses it instead of running on any DUT.

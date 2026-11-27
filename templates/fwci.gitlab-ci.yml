@@ -26,6 +26,7 @@
     FWCI_WORKFLOW: ""
     FWCI_TESTS: "" # test names, separated by commas or newlines; all of the workflow's when empty
     FWCI_BINARIES: "" # name=file, or name=URL on FirmwareCI, separated by ; or newlines
+    FWCI_METADATA: "" # KEY=VALUE for [[meta.KEY]], separated by ; or newlines; needs fwci 0.23.0 or newer
     FWCI_LOCAL: "false" # true runs the tests on this runner, next to the board, instead of FirmwareCI
     FWCI_SYNCED: "true" # on FirmwareCI, the tests as synced, reported on the commit; false sends the checkout's
     FWCI_DUT: "" # with FWCI_LOCAL true, the DUT; else the first free one with the workflow's label

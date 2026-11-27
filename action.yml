@@ -19,6 +19,12 @@ inputs:
       Binaries as name=file, or name=URL on FirmwareCI, separated by ; or newlines, such as
       Binary=build/coreboot.rom for [[input.Binary]].
     required: false
+  metadata:
+    description: >-
+      Facts the tests read, as KEY=VALUE separated by ; or newlines, such as BMC.Version=2.19.0 for
+      [[meta.BMC.Version]]; a value cannot contain ;. FirmwareCI stores and shows them as plain text, so
+      pass a token as a project secret instead. Needs fwci 0.23.0 or newer.
+    required: false
 
   # Where
   local:
@@ -192,6 +198,7 @@ runs:
         WORKFLOW: ${{ inputs.workflow }}
         TESTS: ${{ inputs.tests }}
         BINARIES: ${{ inputs.binaries }}
+        METADATA: ${{ inputs.metadata }}
         LOCAL: ${{ inputs.local }}
         SYNCED: ${{ inputs.synced }}
         FOLLOW: ${{ inputs.follow }}
@@ -253,6 +260,7 @@ runs:
         each -t "$TESTS" ,
         each --storage "$STORAGE" ";"
         each --ssh-key "$SSH_KEYS" ";"
+        each --metadata "$METADATA" ";"
         option --dut "$DUT"
         option --priority "$PRIORITY"
         option -b "$BRANCH"

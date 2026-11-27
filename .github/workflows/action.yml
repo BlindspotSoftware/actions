@@ -107,6 +107,45 @@ jobs:
           BOTH: ${{ steps.both.outcome }}
         run: test "$TYPO/$BOTH" = failure/failure
 
+  arguments:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # It writes its arguments to $RUNNER_TEMP/args, each in brackets, as test/fwci-ci.sh's does.
+      - name: Put a fake fwci on the PATH
+        run: |
+          mkdir "$RUNNER_TEMP/fake"
+          printf '#!/bin/sh\nprintf "[%%s]" "$@" >"$RUNNER_TEMP/args"\n' >"$RUNNER_TEMP/fake/fwci"
+          chmod +x "$RUNNER_TEMP/fake/fwci"
+          echo "$RUNNER_TEMP/fake" >> "$GITHUB_PATH"
+
+      - uses: ./
+        with:
+          workflow: wf
+          binaries: BMC=build/bmc.mtd
+          fallback: |
+            HostBinary
+            Other
+          artifact: ""
+          version: installed
+
+      - name: Fallback names
+        run: |
+          test "$(cat "$RUNNER_TEMP/args")" = \
+            '[run][-w][wf][--fallback=HostBinary][--fallback=Other][--synced][--no-follow][BMC=build/bmc.mtd]'
+
+      - uses: ./
+        with:
+          workflow: wf
+          fallback: |
+            True
+          artifact: ""
+          version: installed
+
+      - name: A fallback for every input
+        run: test "$(cat "$RUNNER_TEMP/args")" = '[run][-w][wf][--fallback][--synced][--no-follow]'
+
   image:
     runs-on: ubuntu-latest
     steps:

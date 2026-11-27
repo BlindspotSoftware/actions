@@ -63,6 +63,13 @@ inputs:
       Queue priority: low, mid or high. A job of higher priority gets a device before every queued job
       of lower priority. Unset, FirmwareCI queues the run at mid, or at high with synced: false.
     required: false
+  fallback:
+    description: >-
+      Inputs a test may take from the golden image of the DUT it runs on when the run doesn't bring
+      them, separated by commas or newlines, such as HostBinary; true allows every input. Name them in
+      CI, so that a build that lost its image skips the test instead of testing the golden image.
+      Needs fwci 0.23.0 or newer.
+    required: false
   branch:
     description: The branch to find the workflow on. Defaults to the branch the run is on.
     required: false
@@ -189,6 +196,7 @@ runs:
         SYNCED: ${{ inputs.synced }}
         FOLLOW: ${{ inputs.follow }}
         PRIORITY: ${{ inputs.priority }}
+        FALLBACK: ${{ inputs.fallback }}
         BRANCH: ${{ inputs.branch }}
         PROJECT_LINK: ${{ inputs.project_link }}
         COMMIT: ${{ inputs.commit_hash }}
@@ -257,6 +265,21 @@ runs:
           "" | false) ;;
           true) args+=(--wait) ;;
           *) args+=("--wait=$WAIT") ;;
+        esac
+
+        # true or false in any case, also as a YAML block scalar, which ends in a newline. A name goes
+        # as --fallback=NAME, so fwci never reads it as a binary or a flag.
+        fallback=${FALLBACK,,}
+        case "${fallback//[[:space:]]/}" in
+          "" | false) ;;
+          true) args+=(--fallback) ;;
+          *)
+            while read -r name; do
+              if [ -n "$name" ]; then
+                args+=("--fallback=$name")
+              fi
+            done <<< "${FALLBACK//,/$'\n'}"
+            ;;
         esac
 
         # A run on this runner always uses the checkout and waits for its tests. fwci refuses what the

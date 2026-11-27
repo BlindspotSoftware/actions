@@ -23,6 +23,7 @@ installs, and take the same inputs. GitLab CI gets the same through a [template]
 | A particular DUT for a run on this runner | `dut: board-2`; without it, the first free DUT with the workflow's label |
 | This checkout's tests on FirmwareCI, not the synced ones | `synced: false` |
 | The step to wait for the results on FirmwareCI | `follow: true` |
+| The DUT's golden image for an input the run doesn't bring | `fallback: HostBinary`, see [Golden Images](https://docs.firmware-ci.com/usage/16_golden_images/) |
 
 ## On FirmwareCI
 
@@ -83,6 +84,7 @@ skipped in `report.xml`.
 | `organization` | The organization to submit to, when the credential reaches more than one. An organization token names its own. |
 | `follow` | `true` waits for the jobs, see above. Default: `false` |
 | `priority` | `low`, `mid` or `high`. Unset, FirmwareCI queues the run at `mid`, or at `high` with `synced: false`. |
+| `fallback` | Inputs a test may take from the golden image of its DUT when the run doesn't bring them, separated by commas or newlines; `true` allows every input. In CI, name them, so that a build that lost its image skips the test. Needs fwci 0.23.0 or newer. |
 | `branch` | The branch to find the workflow on. Defaults to the branch the run is on. |
 | `project_link` | The repository holding the FirmwareCI config, when it isn't this one: `org/repo` on GitHub, else `host/org/repo` or a URL, such as `gitlab.com/org/repo`. Needs `synced` (the default). |
 | `commit_hash` | The commit to report on. Defaults to the PR head, or the commit the run is on. Needs `synced` (the default). |
@@ -119,7 +121,8 @@ firmware-test:
 ```
 
 `FWCI_TESTS`, `FWCI_BINARIES`, `FWCI_LOCAL`, `FWCI_SYNCED`, `FWCI_DUT` and `FWCI_FOLLOW` work as the inputs
-above, and `FWCI_ARGS` takes more `fwci run` flags, such as `--priority low`. `FWCI_FOLLOW` also takes a time
+above, and `FWCI_ARGS` takes more `fwci run` flags, such as `--priority low` or `--fallback HostBinary`.
+`FWCI_FOLLOW` also takes a time
 such as `2h`, the most the job waits before it exits 8. The image's `fwci-ci` turns the variables into
 `fwci run`, and fwci's exit code is the job's. Set `FWCI_TOKEN` as a masked CI/CD
 variable, and `FWCI_ORG` when the token reaches more than one organization. `FWCI_GITLAB_TOKEN` is needed only

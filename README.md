@@ -24,6 +24,7 @@ installs, and take the same inputs. GitLab CI gets the same through a [template]
 | This checkout's tests on FirmwareCI, not the synced ones | `synced: false` |
 | The step to wait for the results on FirmwareCI | `follow: true` |
 | The DUT's golden image for an input the run doesn't bring | `fallback: HostBinary`, see [Golden Images](https://docs.firmware-ci.com/usage/16_golden_images/) |
+| The tests to know the version under test | `metadata: BMC.Version=${{ steps.build.outputs.version }}` for `[[meta.BMC.Version]]` |
 
 ## On FirmwareCI
 
@@ -72,6 +73,7 @@ skipped in `report.xml`.
 | `workflow` | The workflow to run, by name. Required. |
 | `tests` | Test names, separated by commas or newlines. Default: all of the workflow's |
 | `binaries` | `name=file`, or `name=URL` on FirmwareCI, separated by `;` or newlines, for `[[input.name]]`. |
+| `metadata` | `KEY=VALUE`, separated by `;` or newlines, for `[[meta.KEY]]`, see [Request Metadata](https://docs.firmware-ci.com/usage/15_request_metadata/). A value cannot contain `;`. FirmwareCI shows it as plain text, so a token belongs in a project secret. Needs fwci 0.23.0 or newer. |
 | `local` | `true` runs the tests on this runner instead of FirmwareCI. Default: `false` |
 | `synced` | On FirmwareCI, the tests as FirmwareCI synced them, reported on the commit. `false` sends this checkout's tests, as a one-shot run not reported on a commit. Default: `true` |
 | `args` | More arguments for `fwci run`, such as `--verbose`. |
@@ -120,8 +122,8 @@ firmware-test:
     FWCI_BINARIES: Binary=build/coreboot.rom
 ```
 
-`FWCI_TESTS`, `FWCI_BINARIES`, `FWCI_LOCAL`, `FWCI_SYNCED`, `FWCI_DUT` and `FWCI_FOLLOW` work as the inputs
-above, and `FWCI_ARGS` takes more `fwci run` flags, such as `--priority low` or `--fallback HostBinary`.
+`FWCI_TESTS`, `FWCI_BINARIES`, `FWCI_METADATA`, `FWCI_LOCAL`, `FWCI_SYNCED`, `FWCI_DUT` and `FWCI_FOLLOW` work as
+the inputs above, and `FWCI_ARGS` takes more `fwci run` flags, such as `--priority low` or `--fallback HostBinary`.
 `FWCI_FOLLOW` also takes a time
 such as `2h`, the most the job waits before it exits 8. The image's `fwci-ci` turns the variables into
 `fwci run`, and fwci's exit code is the job's. Set `FWCI_TOKEN` as a masked CI/CD

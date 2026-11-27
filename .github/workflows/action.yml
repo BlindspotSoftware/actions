@@ -124,16 +124,17 @@ jobs:
         with:
           workflow: wf
           binaries: BMC=build/bmc.mtd
+          metadata: "BMC.Version=2.19.0; Release=2026.06"
           fallback: |
             HostBinary
             Other
           artifact: ""
           version: installed
 
-      - name: Fallback names
+      - name: Metadata and fallback names
         run: |
           test "$(cat "$RUNNER_TEMP/args")" = \
-            '[run][-w][wf][--fallback=HostBinary][--fallback=Other][--synced][--no-follow][BMC=build/bmc.mtd]'
+            '[run][-w][wf][--metadata][BMC.Version=2.19.0][--metadata][Release=2026.06][--fallback=HostBinary][--fallback=Other][--synced][--no-follow][BMC=build/bmc.mtd]'
 
       - uses: ./
         with:

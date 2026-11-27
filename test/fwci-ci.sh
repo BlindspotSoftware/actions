@@ -31,6 +31,9 @@ check 'tests, args and binaries' 0 \
   FWCI_WORKFLOW=wf FWCI_TESTS=' boot , flash
  s3 resume ,,' FWCI_ARGS='--priority low *' FWCI_BINARIES=' A=a.rom ; B=https://x/b.rom
   C=my c.rom ;'
+check 'metadata' 0 '[run][-w][wf][--metadata][BMC.Version=2.19.0][--metadata][Board=HPE DL320][--synced][--follow=false]' \
+  FWCI_WORKFLOW=wf FWCI_METADATA=' BMC.Version=2.19.0 ; Board=HPE DL320
+'
 check 'local on a DUT' 0 '[run][-w][wf][--dut][board-2]' FWCI_WORKFLOW=wf FWCI_LOCAL=TRUE FWCI_DUT=board-2
 check 'not synced' 0 '[run][-w][wf][--remote][--follow=false]' FWCI_WORKFLOW=wf FWCI_SYNCED=No
 check 'dut on FirmwareCI' 0 '[run][-w][wf][--dut][b][--synced][--follow=false]' FWCI_WORKFLOW=wf FWCI_DUT=b
